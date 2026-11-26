@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="mc-token" content="{{TOKEN}}">
+<title>MacCleaner</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect x="3" y="7" width="26" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2.2"/><rect x="6.5" y="17" width="19" height="4.5" rx="2" fill="currentColor" opacity=".35"/><rect x="6.5" y="17" width="12" height="4.5" rx="2" fill="currentColor"/></svg>
+      <div><strong>MacCleaner</strong><small>v{{VERSION}}</small></div>
+    </div>
+    <nav>
+      <button data-view="overview" class="active"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 3a7 7 0 0 1 7 7h-7z" fill="currentColor"/></svg>Ringkasan</button>
+      <button data-view="explore" disabled><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h5l1.5 2H17v8H3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Analisis Folder</button>
+      <button data-view="recs" disabled><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Rekomendasi<span class="pill" id="navRecs"></span></button>
+      <button data-view="large" disabled><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h7l3 3v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 11h4M8 14h4" stroke="currentColor" stroke-width="1.6"/></svg>File Besar</button>
+    </nav>
+    <div class="legend-box">
+      <div class="legend-title">Arti label</div>
+      <div><span class="badge aman">Aman dihapus</span><small>Dibuat ulang otomatis / tidak dibutuhkan</small></div>
+      <div><span class="badge hati">Hati-hati</span><small>Bisa dihapus, tapi ada akibatnya</small></div>
+      <div><span class="badge periksa">Periksa dulu</span><small>File pribadi — Anda yang putuskan</small></div>
+      <div><span class="badge jangan">Jangan dihapus</span><small>Sistem / bisa merusak data</small></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- RINGKASAN -->
+    <section id="view-overview" class="view active">
+      <header class="view-head">
+        <div>
+          <h1>Ringkasan Disk</h1>
+          <p class="muted">Lihat disk mana yang penuh, lalu pindai untuk tahu penyebabnya.</p>
+        </div>
+        <button class="btn ghost" id="refreshDisks">↻ Muat ulang</button>
+      </header>
+      <div id="disks" class="disk-grid"></div>
+
+      <div id="summary" class="hidden">
+        <div class="grid-2">
+          <div class="card">
+            <h2>Kenapa penuh?</h2>
+            <p class="muted small" id="sumSub"></p>
+            <div class="donut-wrap">
+              <svg id="donut" viewBox="0 0 120 120" width="200" height="200" role="img" aria-label="Pemakaian per kategori"></svg>
+              <ul id="catLegend" class="cat-legend"></ul>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Temuan</h2>
+            <ul id="insights" class="insights"></ul>
+            <div class="stat-row">
+              <div class="stat"><span class="stat-num aman-text" id="statSafe">–</span><span class="stat-lbl">aman dikosongkan</span></div>
+              <div class="stat"><span class="stat-num hati-text" id="statCaution">–</span><span class="stat-lbl">perlu dipertimbangkan</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn primary" data-goto="recs">Lihat rekomendasi →</button>
+              <button class="btn" data-goto="explore">Telusuri folder</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANALISIS -->
+    <section id="view-explore" class="view">
+      <header class="view-head">
+        <div>
+          <h1>Analisis Folder</h1>
+          <nav class="crumbs" id="crumbs"></nav>
+        </div>
+        <button class="btn ghost" id="upBtn">↑ Naik</button>
+      </header>
+      <div class="explore">
+        <div class="card list-card">
+          <div class="list" id="list"></div>
+        </div>
+        <aside class="card detail" id="detail">
+          <p class="muted">Klik salah satu baris untuk melihat penjelasannya.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- REKOMENDASI -->
+    <section id="view-recs" class="view">
+      <header class="view-head">
+        <div>
+          <h1>Rekomendasi Pembersihan</h1>
+          <p class="muted">Dikelompokkan berdasarkan jenis. File dipindah ke Sampah dulu, jadi masih bisa dikembalikan.</p>
+        </div>
+        <button class="btn" id="selectSafe">Pilih semua yang aman</button>
+      </header>
+      <div id="trashCard"></div>
+      <div id="recs"></div>
+      <div class="spacer"></div>
+    </section>
+
+    <!-- FILE BESAR -->
+    <section id="view-large" class="view">
+      <header class="view-head">
+        <div>
+          <h1>File Terbesar</h1>
+          <p class="muted">File tunggal terbesar di area yang dipindai.</p>
+        </div>
+      </header>
+      <div class="card">
+        <table class="table" id="largeTable">
+          <thead><tr><th></th><th>Nama</th><th class="num">Ukuran</th><th>Diubah</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="spacer"></div>
+    </section>
+  </main>
+</div>
+
+<!-- bar pilihan -->
+<div class="selbar hidden" id="selbar">
+  <span id="selInfo"></span>
+  <button class="btn ghost" id="selClear">Batal pilih</button>
+  <button class="btn danger" id="selTrash">Buang ke Sampah</button>
+</div>
+
+<!-- progres pindai -->
+<div class="overlay hidden" id="scanOverlay">
+  <div class="modal scan-modal">
+    <div class="spinner"></div>
+    <h2>Memindai <span id="scanRoot"></span></h2>
+    <div class="scan-stats"><span id="scanFiles">0</span> file · <span id="scanBytes">0 B</span> · <span id="scanTime">0</span> dtk</div>
+    <div class="scan-cur" id="scanCur"></div>
+    <button class="btn" id="scanCancel">Batalkan</button>
+  </div>
+</div>
+
+<!-- dialog konfirmasi -->
+<div class="overlay hidden" id="confirm">
+  <div class="modal">
+    <h2 id="cTitle">Buang ke Sampah?</h2>
+    <div id="cBody"></div>
+    <div class="actions right">
+      <button class="btn ghost" id="cNo">Batal</button>
+      <button class="btn danger" id="cYes">Ya, buang</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<script src="/app.js"></script>
+</body>
+</html>
