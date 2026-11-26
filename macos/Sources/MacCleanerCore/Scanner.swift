@@ -59,6 +59,13 @@ public struct ScanProgress: Sendable {
     public var dirs = 0
     public var bytes: Int64 = 0
     public var current = ""
+
+    public init(files: Int = 0, dirs: Int = 0, bytes: Int64 = 0, current: String = "") {
+        self.files = files
+        self.dirs = dirs
+        self.bytes = bytes
+        self.current = current
+    }
 }
 
 /// Pemindai disk. Panggil `run()` di thread latar; hasilnya dibaca setelah selesai.
