@@ -155,6 +155,7 @@ class ServerTests(unittest.TestCase):
         self.fh = FakeHome()
         self.trash_home = os.path.join(self.fh.tmp, "xdg")
         os.environ["XDG_DATA_HOME"] = self.trash_home
+        os.environ["MACCLEANER_TEST_TRASH"] = "1"
         self.httpd = make_server(0, home=self.fh.home)
         self.port = self.httpd.server_address[1]
         self.token = self.httpd.app_state.token
@@ -166,6 +167,7 @@ class ServerTests(unittest.TestCase):
         self.httpd.shutdown()
         self.httpd.server_close()
         os.environ.pop("XDG_DATA_HOME", None)
+        os.environ.pop("MACCLEANER_TEST_TRASH", None)
         self.fh.cleanup()
 
     def call(self, path, body=None, token=None, host=None):

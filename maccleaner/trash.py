@@ -74,12 +74,18 @@ def _move_to_freedesktop_trash(path: str) -> None:
     os.rename(path, target)
 
 
+def _use_finder() -> bool:
+    """Di macOS pakai Finder/~/.Trash. Tes memakai MACCLEANER_TEST_TRASH agar
+    file tiruan tidak masuk ke Sampah sungguhan."""
+    return sys.platform == "darwin" and not os.environ.get("MACCLEANER_TEST_TRASH")
+
+
 def move_to_trash(paths: List[str]) -> List[Tuple[str, bool, str]]:
     """Buang ke Sampah. Hasil: [(path, berhasil, pesan)]."""
     results: List[Tuple[str, bool, str]] = []
     if not paths:
         return results
-    if sys.platform == "darwin":
+    if _use_finder():
         # Finder mendukung "Kembalikan" (Put Back) dan disk eksternal.
         remaining = [p for p in paths if os.path.lexists(p)]
         if remaining:
@@ -118,7 +124,7 @@ def _friendly(e: OSError) -> str:
 
 def trash_size() -> int:
     from .scanner import file_size
-    dirs = [_mac_trash_dir()] if sys.platform == "darwin" else [os.path.join(_linux_trash_dir(), "files")]
+    dirs = [_mac_trash_dir()] if _use_finder() else [os.path.join(_linux_trash_dir(), "files")]
     total = 0
     for d in dirs:
         for root, subdirs, files in os.walk(d):
@@ -132,7 +138,7 @@ def trash_size() -> int:
 
 def empty_trash() -> Tuple[bool, str]:
     """Kosongkan Sampah — PERMANEN."""
-    if sys.platform == "darwin":
+    if _use_finder():
         try:
             subprocess.run(["osascript", "-e", 'tell application "Finder" to empty trash'],
                            capture_output=True, timeout=600, check=True)

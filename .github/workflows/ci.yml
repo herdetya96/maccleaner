@@ -24,11 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: swift --version
-      - name: Versi web dengan Python bawaan macOS
-        run: |
-          /usr/bin/python3 --version
-          /usr/bin/python3 -m unittest discover -s tests -v
-          /usr/bin/python3 -m maccleaner disks
       - name: Tes logika inti
         working-directory: macos
         run: swift test
@@ -40,3 +35,8 @@ jobs:
         with:
           name: MacCleaner-macOS
           path: MacCleaner-macOS.zip
+      - name: Versi web dengan Python bawaan macOS
+        run: |
+          /usr/bin/python3 --version
+          /usr/bin/python3 -m unittest discover -s tests -v
+          /usr/bin/python3 -m maccleaner disks
