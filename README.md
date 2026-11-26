@@ -30,7 +30,51 @@ Aplikasi untuk mencari tahu **kenapa disk Mac penuh** dan **apa yang aman dihapu
 - Docker, simulator runtime, lampiran iMessage, WhatsApp/Telegram, dan sejenisnya diarahkan ke cara resmi (misalnya `docker system prune`) dan tidak dihapus filenya.
 - Server hanya berjalan di `127.0.0.1` dengan token acak, jadi situs web lain tidak bisa memerintahkannya.
 
-## Cara menjalankan
+## Dua versi
+
+| | Desktop app (SwiftUI) | Versi web (Python) |
+|---|---|---|
+| Lokasi | `macos/` | `maccleaner/` |
+| Tampilan | Jendela Mac asli: sidebar, tabel, menu, mode gelap | Di browser |
+| Butuh | macOS 13 Ventura atau lebih baru | Python 3 (Mac/Linux) |
+| Mode terminal | – | `python3 -m maccleaner scan ~` |
+
+Keduanya memakai basis pengetahuan yang sama. Aturan di Swift (`macos/Sources/MacCleanerCore/RuleData.swift`) dibuat otomatis dari `maccleaner/rules.py`:
+
+```bash
+python3 scripts/gen_swift_rules.py
+```
+
+## Desktop app (SwiftUI)
+
+### Unduh hasil build
+
+Setiap push dibuild otomatis oleh GitHub Actions di Mac. Buka tab **Actions** → run terbaru → unduh artefak **MacCleaner-macOS**, ekstrak, lalu seret `MacCleaner.app` ke folder **Aplikasi**.
+
+Aplikasi ditandatangani ad-hoc (belum lewat notarisasi Apple). Saat dibuka pertama kali: klik kanan → **Buka** → **Buka**. Bila macOS tetap menolak, jalankan:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/MacCleaner.app
+```
+
+### Build sendiri
+
+Butuh Xcode atau Command Line Tools (Swift 5.9+).
+
+```bash
+./scripts/build_mac_app.sh
+```
+
+Hasilnya `macos/build/MacCleaner.app`. Untuk mengembangkan, buka folder `macos/` (berisi `Package.swift`) di Xcode, lalu Run.
+
+Fitur khusus desktop app:
+- Ruang disk dihitung persis seperti Finder, termasuk ruang *purgeable*.
+- Buang ke Sampah memakai API Finder, jadi item bisa "Kembalikan".
+- Tombol pintasan ke pengaturan **Akses Disk Penuh** bila izinnya belum diberikan.
+- Pindai folder mana pun (⌘O), folder rumah (⌘R), atau seluruh disk (⇧⌘R).
+- Klik kanan / klik dua kali di daftar folder dan file besar.
+
+## Cara menjalankan versi web
 
 Hanya butuh **Python 3**, yang ada di macOS setelah Command Line Tools terpasang (`xcode-select --install`). Tidak ada dependensi tambahan.
 
@@ -83,8 +127,20 @@ Aplikasi menampilkan jumlah folder yang tidak bisa dibaca bila izin ini belum di
 | `maccleaner/server.py` | Server lokal + API JSON. |
 | `maccleaner/web/` | Antarmuka (HTML/CSS/JS tanpa library luar, mendukung mode gelap). |
 
+Desktop app (`macos/`):
+
+| File | Isi |
+|---|---|
+| `Sources/MacCleanerCore/` | Logika inti tanpa UI: aturan, pemindai, rekomendasi, buang ke Sampah + pemeriksaan keamanan. |
+| `Sources/MacCleaner/` | Tampilan SwiftUI: Ringkasan, Analisis Folder, Rekomendasi, File Besar. |
+| `Tests/MacCleanerCoreTests/` | Tes logika inti. |
+
 ## Tes
 
 ```bash
 python3 -m unittest discover -s tests -v
+```
+
+```bash
+cd macos && swift test
 ```
