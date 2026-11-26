@@ -47,25 +47,74 @@ python3 scripts/gen_swift_rules.py
 
 ## Desktop app (SwiftUI)
 
-### Unduh hasil build
+### Pasang dari DMG
 
-Setiap push dibuild otomatis oleh GitHub Actions di Mac. Buka tab **Actions** → run terbaru → unduh artefak **MacCleaner-macOS**, ekstrak, lalu seret `MacCleaner.app` ke folder **Aplikasi**.
+Buka `MacCleaner-x.y.z.dmg`, lalu seret **MacCleaner** ke pintasan **Aplikasi**. Selesai.
 
-Aplikasi ditandatangani ad-hoc (belum lewat notarisasi Apple). Saat dibuka pertama kali: klik kanan → **Buka** → **Buka**. Bila macOS tetap menolak, jalankan:
+- Rilis resmi ada di halaman **Releases** (dibuat otomatis saat tag `v*` di-push).
+- Build terbaru dari setiap push ada di tab **Actions** → run terbaru → artefak **MacCleaner-DMG**.
 
-```bash
-xattr -dr com.apple.quarantine /Applications/MacCleaner.app
-```
+DMG yang ditandatangani Developer ID dan dinotarisasi langsung bisa dibuka tanpa peringatan. Kalau DMG-nya *belum* ditandatangani (secrets belum diisi), saat pertama kali membuka: klik kanan → **Buka**.
 
-### Build sendiri
+### Menyiapkan tanda tangan & notarisasi (sekali saja)
+
+Butuh akun Apple Developer (berbayar).
+
+1. **Buat sertifikat Developer ID Application**
+   Xcode → Settings → Accounts → pilih tim → **Manage Certificates…** → **+** → **Developer ID Application**.
+2. **Ekspor sertifikat sebagai .p12**
+   Buka **Keychain Access** → My Certificates → klik kanan "Developer ID Application: …" → **Export…** → simpan sebagai `.p12` dengan kata sandi.
+3. **Buat app-specific password** di [account.apple.com](https://account.apple.com) → Sign-In and Security → App-Specific Passwords.
+4. **Cari Team ID** di [developer.apple.com/account](https://developer.apple.com/account) → Membership details (10 karakter, misalnya `ABCDE12345`).
+5. **Isi GitHub Secrets** di repo → Settings → Secrets and variables → Actions → *New repository secret*:
+
+   | Secret | Isi |
+   |---|---|
+   | `MACOS_CERT_P12` | isi file .p12 dalam base64 (perintah di bawah) |
+   | `MACOS_CERT_PASSWORD` | kata sandi .p12 dari langkah 2 |
+   | `APPLE_ID` | email Apple ID akun developer |
+   | `APPLE_APP_PASSWORD` | app-specific password dari langkah 3 |
+   | `APPLE_TEAM_ID` | Team ID dari langkah 4 |
+
+   Salin .p12 sebagai base64 ke clipboard:
+
+   ```bash
+   base64 -i DeveloperID.p12 | pbcopy
+   ```
+
+6. **Terbitkan rilis**: CI menandatangani, menotarisasi, dan mengunggah DMG ke Releases.
+
+   ```bash
+   git tag v1.0.0 && git push origin v1.0.0
+   ```
+
+Jangan pernah commit file .p12 atau kata sandi ke repo. Simpan hanya di GitHub Secrets.
+
+### Build DMG di Mac sendiri
 
 Butuh Xcode atau Command Line Tools (Swift 5.9+).
 
+Tanpa tanda tangan (untuk dicoba sendiri):
+
 ```bash
-./scripts/build_mac_app.sh
+./scripts/make_dmg.sh
 ```
 
-Hasilnya `macos/build/MacCleaner.app`. Untuk mengembangkan, buka folder `macos/` (berisi `Package.swift`) di Xcode, lalu Run.
+Dengan tanda tangan + notarisasi. Simpan kredensial notarisasi ke Keychain sekali saja:
+
+```bash
+xcrun notarytool store-credentials maccleaner --apple-id EMAIL_ANDA --team-id TEAM_ID_ANDA
+```
+
+Lalu:
+
+```bash
+SIGN_IDENTITY="Developer ID Application: Nama Anda (TEAM_ID_ANDA)" NOTARY_PROFILE=maccleaner ./scripts/make_dmg.sh
+```
+
+Hasilnya `macos/build/MacCleaner-<versi>.dmg`. Nama identitas persisnya bisa dilihat dengan `security find-identity -v -p codesigning`.
+
+Untuk mengembangkan, buka folder `macos/` (berisi `Package.swift`) di Xcode, lalu Run.
 
 Fitur khusus desktop app:
 - Ruang disk dihitung persis seperti Finder, termasuk ruang *purgeable*.
