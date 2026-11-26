@@ -39,6 +39,30 @@ function ago(ts) {
   const div = { second: 1, minute: 60, hour: 3600, day: 86400, month: 2592000, year: 31536000 };
   for (const [lim, unit] of steps) if (s < lim) return rtf.format(-Math.round(s / div[unit]), unit);
 }
+// 45 dtk · 3 mnt 12 dtk · 1 jam 5 mnt
+function fmtDuration(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  if (s < 60) return `${s} dtk`;
+  if (s < 3600) {
+    const m = Math.floor(s / 60), r = s % 60;
+    return r ? `${m} mnt ${r} dtk` : `${m} mnt`;
+  }
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return m ? `${h} jam ${m} mnt` : `${h} jam`;
+}
+function fmtEta(sec) {
+  if (sec === null || sec === undefined) return "Memperkirakan sisa waktu…";
+  if (sec < 10) return "Hampir selesai…";
+  if (sec < 60) return "Kurang dari 1 menit lagi";
+  if (sec < 3600) return `Sekitar ${Math.max(1, Math.round(sec / 60))} menit lagi`;
+  const total = Math.round(sec / 60), h = Math.floor(total / 60), m = total % 60;
+  return m ? `Sekitar ${h} jam ${m} menit lagi` : `Sekitar ${h} jam lagi`;
+}
+const ESTIMATE_NOTE = {
+  history: "Perkiraan berdasarkan pemindaian sebelumnya di folder ini.",
+  disk: "Perkiraan berdasarkan pemakaian disk.",
+  tree: "Pemindaian pertama di folder ini — perkiraan makin akurat seiring berjalan.",
+};
 function badge(rule) {
   return `<span class="badge ${esc(rule.safety)}">${esc(rule.safetyLabel)}</span>`;
 }
@@ -107,7 +131,9 @@ $("#refreshDisks").addEventListener("click", () => loadDisks().catch(e => toast(
 
 // ---------------------------------------------------------------- pindai
 let pollTimer = null;
+let smoothEta = null;
 async function startScan(path) {
+  smoothEta = null;
   try {
     await api("/api/scan", { path });
   } catch (e) { toast(e.message, "err"); return; }
@@ -122,8 +148,15 @@ async function pollScan() {
   $("#scanRoot").textContent = s.display || "";
   $("#scanFiles").textContent = (s.files || 0).toLocaleString("id-ID");
   $("#scanBytes").textContent = human(s.bytes);
-  $("#scanTime").textContent = Math.round(s.elapsed || 0);
+  $("#scanTime").textContent = fmtDuration(s.elapsed || 0);
   $("#scanCur").textContent = s.current || "";
+  const pct = Math.round((s.fraction || 0) * 100);
+  $("#scanBar").style.width = `${Math.max(1, pct)}%`;
+  $("#scanPct").textContent = `${pct}%`;
+  // Haluskan sisa waktu agar angkanya tidak melompat-lompat.
+  smoothEta = (s.eta == null) ? null : (smoothEta == null ? s.eta : smoothEta * 0.8 + s.eta * 0.2);
+  $("#scanEta").textContent = fmtEta(smoothEta);
+  $("#scanNote").textContent = ESTIMATE_NOTE[s.estimate] || "";
   if (s.state !== "running") {
     clearInterval(pollTimer);
     pollTimer = null;
@@ -149,7 +182,7 @@ async function afterScan() {
 async function loadSummary() {
   const s = state.summary = await api("/api/summary");
   $("#summary").classList.remove("hidden");
-  $("#sumSub").textContent = `${s.display} · ${human(s.scanned)} dalam ${s.files.toLocaleString("id-ID")} file · ${s.elapsed.toLocaleString("id-ID")} detik`;
+  $("#sumSub").textContent = `${s.display} · ${human(s.scanned)} dalam ${s.files.toLocaleString("id-ID")} file · selesai dalam ${fmtDuration(s.elapsed)}`;
   const cats = s.categories.slice();
   if (s.wholeDisk && s.unscanned > 0) cats.push({ id: "unscanned", label: "Data sistem / tak terbaca", size: s.unscanned });
   drawDonut(cats);

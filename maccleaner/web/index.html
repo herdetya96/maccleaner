@@ -129,9 +129,13 @@
 <!-- progres pindai -->
 <div class="overlay hidden" id="scanOverlay">
   <div class="modal scan-modal">
-    <div class="spinner"></div>
     <h2>Memindai <span id="scanRoot"></span></h2>
-    <div class="scan-stats"><span id="scanFiles">0</span> file · <span id="scanBytes">0 B</span> · <span id="scanTime">0</span> dtk</div>
+    <div class="scan-progress">
+      <div class="meter scan-meter"><div id="scanBar" style="width:0%"></div></div>
+      <div class="scan-pct"><span id="scanPct">0%</span><span id="scanEta">Memperkirakan sisa waktu…</span></div>
+    </div>
+    <div class="scan-stats"><span id="scanFiles">0</span> file · <span id="scanBytes">0 B</span> · berjalan <span id="scanTime">0 dtk</span></div>
+    <div class="scan-note" id="scanNote"></div>
     <div class="scan-cur" id="scanCur"></div>
     <button class="btn" id="scanCancel">Batalkan</button>
   </div>

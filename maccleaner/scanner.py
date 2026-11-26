@@ -26,7 +26,7 @@ def file_size(st: os.stat_result) -> int:
 
 class Node:
     __slots__ = ("name", "path", "parent", "size", "own", "files", "children",
-                 "top", "rule", "inh", "denied", "mtime", "depth")
+                 "top", "rule", "inh", "denied", "mtime", "depth", "share")
 
     def __init__(self, name: str, path: str, parent: Optional["Node"],
                  rule: Optional[Rule], inh: bool, mtime: float = 0.0):
@@ -41,6 +41,7 @@ class Node:
         self.rule = rule
         self.inh = inh
         self.depth = 0         # kedalaman di bawah folder pemilik aturan
+        self.share = 0.0       # "jatah" progres (untuk perkiraan tanpa riwayat)
         self.denied = False
         self.mtime = mtime
 
@@ -71,6 +72,14 @@ class Scan:
         self.root: Optional[Node] = None
         self.index: Dict[str, Node] = {}
         self.top_files: List[Tuple[int, str, float]] = []   # heap
+        # Perkiraan total untuk progress bar & sisa waktu (diisi sebelum mulai).
+        self.expected_bytes = 0
+        self.expected_files = 0
+        self.expected_duration = 0.0
+        self.estimate_source = "tree"   # history | disk | tree
+        self._done_share = 0.0
+        self.on_done = None             # dipanggil setelah selesai (mis. simpan riwayat)
+        self._best_fraction = 0.0
         self._cancel = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.lock = threading.RLock()
@@ -105,8 +114,57 @@ class Scan:
         finally:
             self.finished = time.time()
             self.current = ""
+        if self.on_done is not None:
+            try:
+                self.on_done(self)
+            except Exception:  # pragma: no cover - riwayat hanya bonus
+                pass
 
     # ------------------------------------------------------------------
+    def set_estimate(self, source: str, expected_bytes: int = 0, expected_files: int = 0,
+                     expected_duration: float = 0.0) -> None:
+        self.estimate_source = source
+        self.expected_bytes = int(expected_bytes or 0)
+        self.expected_files = int(expected_files or 0)
+        self.expected_duration = float(expected_duration or 0.0)
+
+    def fraction(self) -> float:
+        """Perkiraan progres 0..1 (tidak pernah mundur)."""
+        if self.state in ("done", "cancelled"):
+            return 1.0
+        tree = min(1.0, self._done_share)
+        parts = []
+        if self.expected_bytes > 0:
+            parts.append(self.bytes / self.expected_bytes)
+        if self.expected_files > 0:
+            parts.append(self.files / self.expected_files)
+        if self.estimate_source == "history" and parts:
+            f = max(parts)
+        elif self.estimate_source == "disk" and parts:
+            # Sebagian ruang disk (sistem, snapshot) tidak terbaca → gabungkan dengan struktur folder.
+            f = (max(parts) + tree) / 2
+        else:
+            f = tree
+        f = max(0.0, min(0.99, f))
+        self._best_fraction = max(self._best_fraction, f)
+        return self._best_fraction
+
+    def eta(self) -> Optional[float]:
+        """Perkiraan sisa waktu (detik), None bila belum bisa diperkirakan."""
+        if self.state != "running":
+            return None
+        elapsed = time.time() - self.started
+        f = self.fraction()
+        if f < 0.02 or elapsed < 3:
+            if self.estimate_source == "history" and self.expected_duration > 0:
+                return max(1.0, self.expected_duration - elapsed)
+            return None
+        by_rate = elapsed * (1 - f) / f
+        if self.estimate_source == "history" and self.expected_duration > 0:
+            by_hist = max(1.0, self.expected_duration - elapsed)
+            return (by_rate + by_hist) / 2
+        return by_rate
+
     def _skip_paths(self) -> set:
         skip = set()
         if sys.platform == "darwin":
@@ -161,6 +219,7 @@ class Scan:
         name = os.path.basename(root_path) or root_path
         root = Node(name, root_path, None, rule, inh, root_st.st_mtime)
         root.depth = depth + 1 if inh else 0
+        root.share = 1.0
         self.root = root
         index = {root_path: root}
         self.index = index
@@ -187,13 +246,16 @@ class Scan:
                 self.denied_count += 1
                 if len(self.denied) < 200:
                     self.denied.append(node.path)
+                self._done_share += node.share
                 continue
             except OSError:
+                self._done_share += node.share
                 continue
 
             prule = node.rule
             pinh = node.inh
             top = node.top
+            first_child = len(node.children)
             with it:
                 for entry in it:
                     try:
@@ -237,6 +299,15 @@ class Scan:
                                 heapq.heappush(top_global, gitem)
                             elif size > top_global[0][0]:
                                 heapq.heapreplace(top_global, gitem)
+
+            # Bagi jatah progres folder ini rata ke sub-foldernya.
+            kids = node.children[first_child:]
+            if kids:
+                part = node.share / len(kids)
+                for c in kids:
+                    c.share = part
+            else:
+                self._done_share += node.share
 
             now = time.monotonic()
             if now - last_tick > 0.1:

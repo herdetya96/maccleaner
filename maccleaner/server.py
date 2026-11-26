@@ -20,6 +20,7 @@ from .disks import list_disks
 from .rules import (AMAN, HATI, JANGAN, PERIKSA, CATEGORIES, RuleMatcher, can_delete,
                     rule_info)
 from .scanner import Scan
+from . import history
 from . import trash as trashmod
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -64,6 +65,7 @@ class AppState:
                 self.scan.cancel()
                 self.scan.wait(5)
             self.scan = Scan(path, self.matcher)
+            history.prepare(self.scan, list_disks(self.home))
             self.scan.start()
             return self.scan
 
@@ -86,6 +88,9 @@ class AppState:
             "current": self.matcher.display(s.current) if s.current else "",
             "elapsed": round(end - s.started, 1) if s.started else 0,
             "denied": s.denied_count,
+            "fraction": round(s.fraction(), 4),
+            "eta": s.eta(),
+            "estimate": s.estimate_source,
         }
 
     def _item(self, path: str, name: str, size: int, files: int, is_dir: bool,

@@ -6,7 +6,7 @@ import os
 import sys
 import time
 
-from . import __version__
+from . import __version__, history
 from .disks import list_disks
 from .rules import RuleMatcher
 from .scanner import Scan
@@ -41,25 +41,32 @@ def cmd_scan(args) -> int:
     path = os.path.abspath(os.path.expanduser(args.path or state.home))
     scan = Scan(path, state.matcher)
     state.scan = scan
+    history.prepare(scan, list_disks(state.home))
     scan.start()
     try:
         while scan.state == "running":
             if sys.stderr.isatty():
-                sys.stderr.write("\rMemindai… %d file, %s   " % (scan.files, human(scan.bytes)))
+                pct = scan.fraction() * 100
+                line = "\rMemindai %s %3d%%  %s · %s · %s   " % (
+                    bar(pct, 24), pct, human(scan.bytes),
+                    history.fmt_duration(time.time() - scan.started),
+                    history.fmt_eta(scan.eta()))
+                sys.stderr.write(line)
                 sys.stderr.flush()
             time.sleep(0.2)
     except KeyboardInterrupt:
         scan.cancel()
         scan.wait()
     if sys.stderr.isatty():
-        sys.stderr.write("\r" + " " * 60 + "\r")
+        sys.stderr.write("\r" + " " * 100 + "\r")
     if scan.state == "error":
         print("Gagal: " + scan.error)
         return 1
 
     summ = state.summary()
-    print(c("== Ringkasan: %s (%s, %d file, %.1f detik) ==" % (
-        summ["display"], human(summ["scanned"]), summ["files"], summ["elapsed"]), "info"))
+    print(c("== Ringkasan: %s (%s, %d file, %s) ==" % (
+        summ["display"], human(summ["scanned"]), summ["files"],
+        history.fmt_duration(summ["elapsed"])), "info"))
     for ins in summ["insights"]:
         print(" • " + c(ins["text"], ins["level"]))
 

@@ -70,6 +70,7 @@ final class AppModel: ObservableObject {
     @Published var progress = ScanProgress()
     @Published var scanRootDisplay = ""
     @Published var scanElapsed: TimeInterval = 0
+    @Published var scanEta: TimeInterval?
     @Published private(set) var scan: Scan?
     @Published var summary: Summary?
     @Published var groups: [RecGroup] = []
@@ -126,15 +127,26 @@ final class AppModel: ObservableObject {
         scanRootDisplay = matcher.display(s.rootPath)
         picked.removeAll()
         selectedEntry = nil
+        scanEta = nil
+        // Perkiraan total dari riwayat pemindaian sebelumnya atau pemakaian disk.
+        ScanHistory.prepare(s, disks: disks)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             s.run()
+            ScanHistory.remember(s)
             DispatchQueue.main.async { self?.scanFinished(s) }
         }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             guard let self = self, let cur = self.scan, cur === s else { return }
-            self.progress = s.progress
-            self.scanElapsed = s.elapsed
+            let p = s.progress
+            self.progress = p
+            self.scanElapsed = p.elapsed
+            // Haluskan sisa waktu agar angkanya tidak melompat-lompat.
+            if let new = p.eta {
+                self.scanEta = self.scanEta.map { $0 * 0.8 + new * 0.2 } ?? new
+            } else {
+                self.scanEta = nil
+            }
         }
     }
 

@@ -137,10 +137,25 @@ struct ScanProgressView: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         VStack(spacing: 12) {
-            ProgressView()
             Text("Memindai \(model.scanRootDisplay)").font(.headline)
-            Text("\(Format.count(model.progress.files)) file · \(Format.bytes(model.progress.bytes)) · \(Int(model.scanElapsed)) dtk")
+            VStack(alignment: .leading, spacing: 6) {
+                ProgressView(value: model.progress.fraction)
+                    .progressViewStyle(.linear)
+                    .animation(.easeOut(duration: 0.25), value: model.progress.fraction)
+                HStack {
+                    Text("\(Int((model.progress.fraction * 100).rounded()))%")
+                        .font(.title2.bold()).monospacedDigit()
+                    Spacer()
+                    Text(Format.eta(model.scanEta)).fontWeight(.semibold)
+                }
+            }
+            .frame(width: 420)
+            Text("\(Format.count(model.progress.files)) file · \(Format.bytes(model.progress.bytes)) · berjalan \(Format.duration(model.scanElapsed))")
                 .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Text(model.progress.estimate.note)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             Text(model.matcher.display(model.progress.current))
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)

@@ -29,6 +29,8 @@ public final class Node: Identifiable {
     public let rule: Rule?
     public let inherited: Bool
     public internal(set) var depth: Int = 0
+    /// "Jatah" progres folder ini (untuk perkiraan tanpa riwayat).
+    var share: Double = 0
     public internal(set) var denied = false
     public let mtime: TimeInterval
 
@@ -59,12 +61,40 @@ public struct ScanProgress: Sendable {
     public var dirs = 0
     public var bytes: Int64 = 0
     public var current = ""
+    /// Bagian "jatah" folder yang sudah selesai (perkiraan tanpa riwayat).
+    public var treeShare: Double = 0
+    /// Perkiraan progres 0…1.
+    public var fraction: Double = 0
+    /// Perkiraan sisa waktu (detik); nil bila belum bisa diperkirakan.
+    public var eta: TimeInterval?
+    public var elapsed: TimeInterval = 0
+    public var estimate: ScanEstimate = .tree
 
-    public init(files: Int = 0, dirs: Int = 0, bytes: Int64 = 0, current: String = "") {
+    public init(files: Int = 0, dirs: Int = 0, bytes: Int64 = 0, current: String = "",
+                treeShare: Double = 0) {
         self.files = files
         self.dirs = dirs
         self.bytes = bytes
         self.current = current
+        self.treeShare = treeShare
+    }
+}
+
+/// Dari mana perkiraan total pemindaian berasal.
+public enum ScanEstimate: String, Sendable {
+    /// Pemindaian sebelumnya di folder yang sama (paling akurat).
+    case history
+    /// Pemakaian disk (saat memindai seluruh disk/volume).
+    case disk
+    /// Struktur folder: jatah progres dibagi rata ke sub-folder.
+    case tree
+
+    public var note: String {
+        switch self {
+        case .history: return "Perkiraan berdasarkan pemindaian sebelumnya di folder ini."
+        case .disk: return "Perkiraan berdasarkan pemakaian disk."
+        case .tree: return "Pemindaian pertama di folder ini — perkiraan makin akurat seiring berjalan."
+        }
     }
 }
 
@@ -90,6 +120,21 @@ public final class Scan: @unchecked Sendable {
     private let lock = NSLock()
     private var _progress = ScanProgress()
     private var cancelled = false
+    private var bestFraction: Double = 0
+
+    // Perkiraan total (isi dengan setEstimate sebelum run()).
+    public private(set) var estimate: ScanEstimate = .tree
+    public private(set) var expectedBytes: Int64 = 0
+    public private(set) var expectedFiles = 0
+    public private(set) var expectedDuration: TimeInterval = 0
+
+    public func setEstimate(_ source: ScanEstimate, bytes: Int64 = 0, files: Int = 0,
+                            duration: TimeInterval = 0) {
+        estimate = source
+        expectedBytes = bytes
+        expectedFiles = files
+        expectedDuration = duration
+    }
 
     public init(path: String, matcher: RuleMatcher) {
         var p = (path as NSString).expandingTildeInPath
@@ -98,9 +143,44 @@ public final class Scan: @unchecked Sendable {
         self.matcher = matcher
     }
 
+    /// Progres saat ini, termasuk perkiraan persen & sisa waktu.
     public var progress: ScanProgress {
         lock.lock(); defer { lock.unlock() }
-        return _progress
+        var p = _progress
+        let elapsed = Date().timeIntervalSince(started)
+        p.elapsed = elapsed
+        p.estimate = estimate
+        if state == .done || state == .cancelled {
+            p.fraction = 1
+            p.eta = nil
+            return p
+        }
+        var parts: [Double] = []
+        if expectedBytes > 0 { parts.append(Double(p.bytes) / Double(expectedBytes)) }
+        if expectedFiles > 0 { parts.append(Double(p.files) / Double(expectedFiles)) }
+        let tree = min(1, p.treeShare)
+        var f: Double
+        switch (estimate, parts.max()) {
+        case (.history, let m?): f = m
+        // Sebagian ruang disk (sistem, snapshot) tidak terbaca → gabungkan dengan struktur folder.
+        case (.disk, let m?): f = (m + tree) / 2
+        default: f = tree
+        }
+        f = max(0, min(0.99, f))
+        bestFraction = max(bestFraction, f)   // tidak pernah mundur
+        p.fraction = bestFraction
+
+        if p.fraction < 0.02 || elapsed < 3 {
+            p.eta = (estimate == .history && expectedDuration > 0) ? max(1, expectedDuration - elapsed) : nil
+        } else {
+            let byRate = elapsed * (1 - p.fraction) / p.fraction
+            if estimate == .history && expectedDuration > 0 {
+                p.eta = (byRate + max(1, expectedDuration - elapsed)) / 2
+            } else {
+                p.eta = byRate
+            }
+        }
+        return p
     }
 
     public func cancel() {
@@ -207,6 +287,8 @@ public final class Scan: @unchecked Sendable {
         let root = Node(name: name, path: rootPath, parent: nil, rule: rrule, inherited: rinh,
                         mtime: rootSt.mtime)
         root.depth = rinh ? depth + 1 : 0
+        root.share = 1
+        var doneShare: Double = 0
         self.root = root
         var index: [String: Node] = [rootPath: root]
         var nodes: [Node] = [root]
@@ -226,9 +308,11 @@ public final class Scan: @unchecked Sendable {
                     deniedCount += 1
                     if deniedSample.count < 200 { deniedSample.append(node.path) }
                 }
+                doneShare += node.share
                 continue
             }
             let base = node.path == "/" ? "" : node.path
+            let firstChild = node.children.count
             while let ent = readdir(dir) {
                 let entName: String = withUnsafePointer(to: ent.pointee.d_name) { ptr in
                     String(cString: UnsafeRawPointer(ptr).assumingMemoryBound(to: CChar.self))
@@ -278,17 +362,28 @@ public final class Scan: @unchecked Sendable {
             }
             closedir(dir)
 
+            // Bagi jatah progres folder ini rata ke sub-foldernya.
+            let kids = node.children.count - firstChild
+            if kids > 0 {
+                let part = node.share / Double(kids)
+                for c in node.children[firstChild...] { c.share = part }
+            } else {
+                doneShare += node.share
+            }
+
             let now = Date()
             if now.timeIntervalSince(lastTick) > 0.1 {
                 lastTick = now
                 lock.lock()
-                _progress = ScanProgress(files: files, dirs: nodes.count, bytes: total, current: node.path)
+                _progress = ScanProgress(files: files, dirs: nodes.count, bytes: total, current: node.path,
+                                         treeShare: doneShare)
                 lock.unlock()
             }
         }
 
         lock.lock()
-        _progress = ScanProgress(files: files, dirs: nodes.count, bytes: total, current: "")
+        _progress = ScanProgress(files: files, dirs: nodes.count, bytes: total, current: "",
+                                 treeShare: doneShare)
         lock.unlock()
 
         // Agregasi ukuran dari bawah ke atas (anak selalu dibuat setelah induknya).

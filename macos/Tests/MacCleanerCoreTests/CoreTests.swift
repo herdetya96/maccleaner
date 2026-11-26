@@ -54,6 +54,19 @@ final class RuleTests: XCTestCase {
         XCTAssertFalse(m.isProtected("/Users/budi/Library/Caches"))
     }
 
+    func testDurationAndEta() {
+        XCTAssertEqual(Format.duration(45), "45 dtk")
+        XCTAssertEqual(Format.duration(192), "3 mnt 12 dtk")
+        XCTAssertEqual(Format.duration(180), "3 mnt")
+        XCTAssertEqual(Format.duration(3900), "1 jam 5 mnt")
+        XCTAssertEqual(Format.duration(7200), "2 jam")
+        XCTAssertEqual(Format.eta(nil), "Memperkirakan sisa waktu…")
+        XCTAssertEqual(Format.eta(5), "Hampir selesai…")
+        XCTAssertEqual(Format.eta(40), "Kurang dari 1 menit lagi")
+        XCTAssertEqual(Format.eta(250), "Sekitar 4 menit lagi")
+        XCTAssertEqual(Format.eta(3900), "Sekitar 1 jam 5 menit lagi")
+    }
+
     func testFormat() {
         XCTAssertEqual(Format.bytes(512), "512 B")
         XCTAssertEqual(Format.bytes(1_500_000), "1,5 MB")
@@ -162,6 +175,25 @@ final class ScanTests: XCTestCase {
         let info = s.fileRule(path, parent: s.parentNode(of: path))
         XCTAssertTrue(info.partOf)
         XCTAssertFalse(info.deletable)
+    }
+
+    func testProgressEstimate() {
+        let s = makeScan()
+        let p = s.progress
+        XCTAssertEqual(p.fraction, 1)
+        // Semua jatah progres folder habis dibagi → total tepat 1.
+        XCTAssertEqual(p.treeShare, 1, accuracy: 1e-9)
+        XCTAssertEqual(p.files, 12)
+
+        let disk = DiskInfo(name: "Tes", mount: home, total: 10_000_000, used: 4_000_000,
+                            available: 6_000_000, free: 6_000_000, isInternal: true, format: "", isRoot: false)
+        let s2 = Scan(path: home, matcher: RuleMatcher(home: home))
+        ScanHistory.prepare(s2, disks: [disk])
+        // Tanpa riwayat untuk folder sementara ini → pakai pemakaian disk.
+        if ScanHistory.load(home) == nil {
+            XCTAssertEqual(s2.estimate, .disk)
+            XCTAssertEqual(s2.expectedBytes, 4_000_000)
+        }
     }
 
     func testRemoveUpdatesSizes() {

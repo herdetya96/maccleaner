@@ -113,7 +113,7 @@ struct WhyFullCard: View {
         let total = max(1, sl.reduce(0) { $0 + $1.size })
         Card {
             Text("Kenapa penuh?").font(.title3.bold())
-            Text("\(summary.display) · \(Format.bytes(summary.scanned)) dalam \(Format.count(summary.files)) file · \(String(format: "%.1f", summary.elapsed)) detik")
+            Text("\(summary.display) · \(Format.bytes(summary.scanned)) dalam \(Format.count(summary.files)) file · selesai dalam \(Format.duration(summary.elapsed))")
                 .font(.caption).foregroundStyle(.secondary)
             HStack(alignment: .center, spacing: 18) {
                 Donut(slices: sl).frame(width: 210, height: 210)

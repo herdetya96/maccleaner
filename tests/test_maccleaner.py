@@ -7,6 +7,7 @@ import unittest
 import urllib.error
 import urllib.request
 
+from maccleaner import history
 from maccleaner.rules import AMAN, HATI, JANGAN, PERIKSA, RuleMatcher, glob_to_regex
 from maccleaner.scanner import Scan
 from maccleaner.server import make_server
@@ -150,12 +151,54 @@ class ScanTests(unittest.TestCase):
         self.assertGreater(cats["cloud"], 0)
 
 
+class ProgressTests(unittest.TestCase):
+    def test_fmt_duration(self):
+        self.assertEqual(history.fmt_duration(45), "45 dtk")
+        self.assertEqual(history.fmt_duration(192), "3 mnt 12 dtk")
+        self.assertEqual(history.fmt_duration(180), "3 mnt")
+        self.assertEqual(history.fmt_duration(3900), "1 jam 5 mnt")
+        self.assertEqual(history.fmt_duration(7200), "2 jam")
+
+    def test_fmt_eta(self):
+        self.assertEqual(history.fmt_eta(None), "Memperkirakan sisa waktu…")
+        self.assertEqual(history.fmt_eta(5), "Hampir selesai…")
+        self.assertEqual(history.fmt_eta(40), "Kurang dari 1 menit lagi")
+        self.assertEqual(history.fmt_eta(250), "Sekitar 4 menit lagi")
+        self.assertEqual(history.fmt_eta(3900), "Sekitar 1 jam 5 menit lagi")
+
+    def test_tree_fraction_reaches_one(self):
+        fh = FakeHome()
+        try:
+            scan = Scan(fh.home, RuleMatcher(fh.home))
+            scan.state = "running"
+            scan._run()
+            # Semua jatah progres habis dibagi → hampir tepat 1.0 (dibatasi 0.99 saat berjalan).
+            self.assertAlmostEqual(scan._done_share, 1.0, places=6)
+            self.assertEqual(scan.fraction(), 0.99)
+            scan.state = "done"
+            self.assertEqual(scan.fraction(), 1.0)
+        finally:
+            fh.cleanup()
+
+    def test_history_estimate(self):
+        scan = Scan("/", RuleMatcher("/home/x"))
+        scan.set_estimate("history", 1000, 10, 60)
+        scan.state = "running"
+        scan.started = __import__("time").time() - 30
+        scan.bytes, scan.files = 500, 5
+        self.assertAlmostEqual(scan.fraction(), 0.5)
+        self.assertAlmostEqual(scan.eta(), 30, delta=1)
+        scan.bytes = 100   # tidak boleh mundur
+        self.assertAlmostEqual(scan.fraction(), 0.5)
+
+
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.fh = FakeHome()
         self.trash_home = os.path.join(self.fh.tmp, "xdg")
         os.environ["XDG_DATA_HOME"] = self.trash_home
         os.environ["MACCLEANER_TEST_TRASH"] = "1"
+        os.environ["MACCLEANER_DATA_DIR"] = os.path.join(self.fh.tmp, "data")
         self.httpd = make_server(0, home=self.fh.home)
         self.port = self.httpd.server_address[1]
         self.token = self.httpd.app_state.token
@@ -168,6 +211,7 @@ class ServerTests(unittest.TestCase):
         self.httpd.server_close()
         os.environ.pop("XDG_DATA_HOME", None)
         os.environ.pop("MACCLEANER_TEST_TRASH", None)
+        os.environ.pop("MACCLEANER_DATA_DIR", None)
         self.fh.cleanup()
 
     def call(self, path, body=None, token=None, host=None):
@@ -206,6 +250,18 @@ class ServerTests(unittest.TestCase):
         self.assertIn("node-modules", ids)
         lf = self.call("/api/largefiles")
         self.assertTrue(lf["items"])
+
+    def test_progress_and_history(self):
+        st = self.call("/api/status")
+        self.assertEqual(st["state"], "done")
+        self.assertEqual(st["fraction"], 1.0)
+        self.assertEqual(st["estimate"], "tree")       # pemindaian pertama
+        hist = history.load(self.fh.home)
+        self.assertIsNotNone(hist)
+        self.assertGreater(hist["bytes"], 0)
+        self.call("/api/scan", {"path": self.fh.home})
+        self.httpd.app_state.scan.wait(30)
+        self.assertEqual(self.call("/api/status")["estimate"], "history")
 
     def test_trash_safe_item(self):
         target = self.fh.home + "/proyek/web/node_modules"
