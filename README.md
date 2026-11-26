@@ -32,10 +32,10 @@ Aplikasi untuk mencari tahu **kenapa disk Mac penuh** dan **apa yang aman dihapu
 
 ## Dua versi
 
-| | Desktop app (SwiftUI) | Versi web (Python) |
+| | Desktop app | Versi web (Python) |
 |---|---|---|
-| Lokasi | `macos/` | `maccleaner/` |
-| Tampilan | Jendela Mac asli: sidebar, tabel, menu, mode gelap | Di browser |
+| Lokasi | `macos/` + `ui/` | `maccleaner/` |
+| Tampilan | Jendela Mac dengan tampilan coss ui, menu, mode gelap | Di browser |
 | Butuh | macOS 13 Ventura atau lebih baru | Python 3 (Mac/Linux) |
 | Mode terminal | – | `python3 -m maccleaner scan ~` |
 
@@ -45,7 +45,9 @@ Keduanya memakai basis pengetahuan yang sama. Aturan di Swift (`macos/Sources/Ma
 python3 scripts/gen_swift_rules.py
 ```
 
-## Desktop app (SwiftUI)
+## Desktop app
+
+Aplikasi Mac asli (jendela, menu, ikon, DMG) dengan tampilan dari **[coss ui](https://coss.com/ui)**, design system Cal.com berbasis React + Base UI + Tailwind. Tampilan ada di folder `ui/` dan dimuat di dalam jendela lewat WKWebView. Semua logika (pemindai, aturan, buang ke Sampah) berjalan di Swift (`macos/Sources/MacCleanerCore`) tanpa server dan tanpa internet.
 
 ### Pasang dari DMG
 
@@ -92,7 +94,7 @@ Jangan pernah commit file .p12 atau kata sandi ke repo. Simpan hanya di GitHub S
 
 ### Build DMG di Mac sendiri
 
-Butuh Xcode atau Command Line Tools (Swift 5.9+).
+Butuh Xcode atau Command Line Tools (Swift 5.9+) dan **Node.js 20+** (untuk membangun tampilan).
 
 Tanpa tanda tangan (untuk dicoba sendiri):
 
@@ -120,8 +122,21 @@ Fitur khusus desktop app:
 - Ruang disk dihitung persis seperti Finder, termasuk ruang *purgeable*.
 - Buang ke Sampah memakai API Finder, jadi item bisa "Kembalikan".
 - Tombol pintasan ke pengaturan **Akses Disk Penuh** bila izinnya belum diberikan.
-- Pindai folder mana pun (⌘O), folder rumah (⌘R), atau seluruh disk (⇧⌘R).
-- Klik kanan / klik dua kali di daftar folder dan file besar.
+- Pindai folder mana pun (⌘O), folder rumah (⌘R), atau seluruh disk (⇧⌘R); pindah halaman dengan ⌘1–⌘4.
+
+### Mengembangkan tampilan (coss ui)
+
+Tampilan memakai API yang sama dengan server Python, jadi bisa dikembangkan & dicoba di browser di OS apa pun:
+
+```bash
+cd ui && npm install && npm run build
+```
+
+```bash
+python3 -m maccleaner app --ui-dir ui/dist
+```
+
+Komponen coss ui ada di `ui/src/components/ui/` (disalin dari [github.com/cosscom/ui](https://github.com/cosscom/ui), lisensi MIT). Halaman aplikasi ada di `ui/src/views/`.
 
 ## Cara menjalankan versi web
 
@@ -174,14 +189,15 @@ Aplikasi menampilkan jumlah folder yang tidak bisa dibaca bila izin ini belum di
 | `maccleaner/disks.py` | Daftar volume (`diskutil` di macOS, `df` di Linux). |
 | `maccleaner/trash.py` | Buang ke Sampah lewat Finder, dan kosongkan Sampah. |
 | `maccleaner/server.py` | Server lokal + API JSON. |
-| `maccleaner/web/` | Antarmuka (HTML/CSS/JS tanpa library luar, mendukung mode gelap). |
+| `maccleaner/web/` | Antarmuka versi web (HTML/CSS/JS tanpa library luar, mendukung mode gelap). |
+| `ui/` | Antarmuka desktop app: React + coss ui + Tailwind (Vite). |
 
 Desktop app (`macos/`):
 
 | File | Isi |
 |---|---|
 | `Sources/MacCleanerCore/` | Logika inti tanpa UI: aturan, pemindai, rekomendasi, buang ke Sampah + pemeriksaan keamanan. |
-| `Sources/MacCleaner/` | Tampilan SwiftUI: Ringkasan, Analisis Folder, Rekomendasi, File Besar. |
+| `Sources/MacCleaner/` | Jendela aplikasi, menu, WKWebView, dan jembatan API (`ApiBridge.swift`) untuk tampilan coss ui. |
 | `Tests/MacCleanerCoreTests/` | Tes logika inti. |
 
 ## Tes

@@ -54,6 +54,7 @@ class AppState:
         self.scan: Optional[Scan] = None
         self.lock = threading.Lock()
         self.last_seen = time.time()   # panggilan API terakhir dari browser
+        self.ui_dir: Optional[str] = None  # pengembangan: sajikan ui/dist (coss ui)
 
     # ------------------------------------------------------------------
     def start_scan(self, path: str) -> Scan:
@@ -429,11 +430,33 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._dispatch("POST")
 
+    def _serve_ui_dir(self, path: str) -> None:
+        """Mode pengembangan: sajikan hasil build antarmuka coss ui (ui/dist)."""
+        root = os.path.realpath(self.state.ui_dir)
+        rel = path.lstrip("/") or "index.html"
+        full = os.path.realpath(os.path.join(root, rel))
+        if not (full == root or full.startswith(root + os.sep)) or not os.path.isfile(full):
+            self._send(404, b"Not found", "text/plain")
+            return
+        ctype = {
+            ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
+            ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+            ".woff2": "font/woff2", ".json": "application/json",
+        }.get(os.path.splitext(full)[1].lower(), "application/octet-stream")
+        with open(full, "rb") as f:
+            data = f.read()
+        if full.endswith("index.html"):
+            data = data.replace(b"{{TOKEN}}", self.state.token.encode())
+        self._send(200, data, ctype)
+
     def _dispatch(self, method: str) -> None:
         if not self._host_ok():
             self._send(403, b"Forbidden", "text/plain")
             return
         url = urlparse(self.path)
+        if method == "GET" and self.state.ui_dir and not url.path.startswith("/api/"):
+            self._serve_ui_dir(url.path)
+            return
         if method == "GET" and url.path in STATIC:
             fname, ctype = STATIC[url.path]
             with open(os.path.join(WEB_DIR, fname), "rb") as f:
@@ -500,8 +523,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "%s: %s" % (type(e).__name__, e)}, 500)
 
 
-def make_server(port: int = 0, home: Optional[str] = None) -> ThreadingHTTPServer:
+def make_server(port: int = 0, home: Optional[str] = None,
+                ui_dir: Optional[str] = None) -> ThreadingHTTPServer:
     state = AppState(home)
+    state.ui_dir = ui_dir
     handler = type("BoundHandler", (Handler,), {"state": state})
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     httpd.daemon_threads = True
@@ -509,11 +534,12 @@ def make_server(port: int = 0, home: Optional[str] = None) -> ThreadingHTTPServe
     return httpd
 
 
-def serve(port: int = 8765, open_browser: bool = True, auto_exit: bool = False) -> None:
+def serve(port: int = 8765, open_browser: bool = True, auto_exit: bool = False,
+          ui_dir: Optional[str] = None) -> None:
     try:
-        httpd = make_server(port)
+        httpd = make_server(port, ui_dir=ui_dir)
     except OSError:
-        httpd = make_server(0)  # port terpakai → pilih port bebas
+        httpd = make_server(0, ui_dir=ui_dir)  # port terpakai → pilih port bebas
     url = "http://127.0.0.1:%d/" % httpd.server_address[1]
     print("MacCleaner berjalan di %s" % url)
     print("Tekan Ctrl+C untuk berhenti.")

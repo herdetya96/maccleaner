@@ -263,6 +263,24 @@ class ServerTests(unittest.TestCase):
         self.httpd.app_state.scan.wait(30)
         self.assertEqual(self.call("/api/status")["estimate"], "history")
 
+    def test_ui_dir_mode(self):
+        ui = os.path.join(self.fh.tmp, "ui")
+        os.makedirs(os.path.join(ui, "assets"))
+        with open(os.path.join(ui, "index.html"), "w") as f:
+            f.write('<meta name="mc-token" content="{{TOKEN}}">')
+        with open(os.path.join(ui, "assets", "app.js"), "w") as f:
+            f.write("console.log(1)")
+        self.httpd.app_state.ui_dir = ui
+        base = "http://127.0.0.1:%d" % self.port
+        with urllib.request.urlopen(base + "/") as r:
+            self.assertIn(self.token, r.read().decode())
+        with urllib.request.urlopen(base + "/assets/app.js") as r:
+            self.assertIn("javascript", r.headers["Content-Type"])
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(base + "/../../etc/passwd")
+        self.assertEqual(cm.exception.code, 404)
+        self.assertEqual(self.call("/api/status")["state"], "done")   # API tetap jalan
+
     def test_trash_safe_item(self):
         target = self.fh.home + "/proyek/web/node_modules"
         before = self.call("/api/node")["node"]["size"]

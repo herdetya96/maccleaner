@@ -20,8 +20,24 @@ jobs:
       - name: Aturan Swift sinkron dengan rules.py
         run: python scripts/gen_swift_rules.py --check
 
+  ui:
+    name: Antarmuka (coss ui)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Typecheck & build
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
   macos:
-    name: SwiftUI (desktop app + DMG)
+    name: Desktop app + DMG
     runs-on: macos-15
     permissions:
       contents: write   # untuk menerbitkan Release saat push tag v*
@@ -36,6 +52,11 @@ jobs:
       BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
       - run: swift --version
 
       - name: Tes logika inti

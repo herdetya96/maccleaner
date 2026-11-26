@@ -121,6 +121,7 @@ def main(argv=None) -> int:
     a.add_argument("--no-browser", action="store_true")
     a.add_argument("--auto-exit", action="store_true",
                    help="berhenti sendiri setelah tab browser ditutup")
+    a.add_argument("--ui-dir", help="pengembangan: pakai antarmuka coss ui dari folder ini (mis. ui/dist)")
     sub.add_parser("disks", help="tampilkan pemakaian disk")
     s = sub.add_parser("scan", help="pindai folder dan tampilkan laporan di terminal")
     s.add_argument("path", nargs="?")
@@ -133,5 +134,6 @@ def main(argv=None) -> int:
         return cmd_scan(args)
     serve(port=getattr(args, "port", 8765),
           open_browser=not getattr(args, "no_browser", False),
-          auto_exit=getattr(args, "auto_exit", False))
+          auto_exit=getattr(args, "auto_exit", False),
+          ui_dir=getattr(args, "ui_dir", None))
     return 0

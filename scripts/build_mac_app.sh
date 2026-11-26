@@ -15,6 +15,19 @@ VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$ROOT/maccleaner/__init__.py
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 
+# Antarmuka coss ui (React) → ui/dist. Butuh Node.js 20+ (npm).
+if [ -z "${SKIP_UI_BUILD:-}" ]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "Node.js (npm) dibutuhkan untuk membangun antarmuka. Pasang dari https://nodejs.org atau: brew install node"
+    exit 1
+  fi
+  (cd "$ROOT/ui" && { [ -d node_modules ] || npm ci; } && npm run build)
+fi
+if [ ! -f "$ROOT/ui/dist/index.html" ]; then
+  echo "ui/dist belum ada. Jalankan: cd ui && npm install && npm run build"
+  exit 1
+fi
+
 cd "$PKG"
 # Universal (Apple Silicon + Intel) bila didukung, selain itu arsitektur Mac ini.
 if swift build -c release --arch arm64 --arch x86_64 >/dev/null 2>&1; then
@@ -29,6 +42,7 @@ STAGE="$(mktemp -d)"
 CONTENTS="$STAGE/MacCleaner.app/Contents"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN" "$CONTENTS/MacOS/MacCleaner"
+ditto "$ROOT/ui/dist" "$CONTENTS/Resources/ui"
 
 # Ikon: AppIcon.png (1024×1024) → AppIcon.icns
 ICONSET="$STAGE/AppIcon.iconset"
