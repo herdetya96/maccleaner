@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python:
+    name: Python (web app)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m unittest discover -s tests -v
+      - name: Aturan Swift sinkron dengan rules.py
+        run: python scripts/gen_swift_rules.py --check
+
+  macos:
+    name: SwiftUI (desktop app)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - name: Tes logika inti
+        working-directory: macos
+        run: swift test
+      - name: Build MacCleaner.app
+        run: ./scripts/build_mac_app.sh
+      - name: Bungkus .app
+        run: ditto -c -k --keepParent macos/build/MacCleaner.app MacCleaner-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MacCleaner-macOS
+          path: MacCleaner-macOS.zip

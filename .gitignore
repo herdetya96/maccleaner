@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 dist/
 .DS_Store
+macos/.build/
+macos/build/
+*.xcodeproj/xcuserdata/
+.swiftpm/
